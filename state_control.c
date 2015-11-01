@@ -37,7 +37,7 @@ void state_control() {
 	}
 
 	if ( (ret = state_changed(buf, state)) ) {
-		if(ret == 1) pthread_cancel(statistics_thread);
+		if(ret == CONTROL_SWITCH_STATE) pthread_cancel(statistics_thread);
 		strcpy(buf, "< ok >");
 		send(client_socket, buf, strlen(buf), 0);
 		return;

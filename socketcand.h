@@ -18,6 +18,10 @@
 #define STATE_CONTROL 5
 #define STATE_ISOTP 6
 
+#define CONTROL_NO_SWITCH 0
+#define CONTROL_SWITCH_STATE 1
+#define CONTROL_SAME_STATE 2
+
 #define PRINT_INFO(...) if(daemon_flag) syslog(LOG_INFO, __VA_ARGS__); else printf(__VA_ARGS__);
 #define PRINT_ERROR(...) if(daemon_flag) syslog(LOG_ERR, __VA_ARGS__); else fprintf(stderr, __VA_ARGS__);
 #define PRINT_VERBOSE(...) if(verbose_flag && !daemon_flag) printf(__VA_ARGS__);

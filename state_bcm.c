@@ -141,7 +141,7 @@ void state_bcm() {
 		strncpy(ifr.ifr_name, bus_name, IFNAMSIZ);
 
 		if ( (ret = state_changed(buf, state)) ) {
-			if(ret == 1) close(sc);
+			if(ret == CONTROL_SWITCH_STATE) close(sc);
 			strcpy(buf, "< ok >");
 			send(client_socket, buf, strlen(buf), 0);
 			return;

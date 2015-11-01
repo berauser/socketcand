@@ -100,12 +100,12 @@ struct ifreq ifr, ifr_brd;
 
 int change_state(int new_state)
 {
-	if(state == new_state) return 2;
+	if(state == new_state) return CONTROL_SAME_STATE;
 
 	previous_state = state;
 	state = new_state;
 
-	return 1;
+	return CONTROL_SWITCH_STATE;
 }
 
 int state_changed(char *buf, int current_state)

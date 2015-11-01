@@ -49,7 +49,7 @@ void state_isotp() {
 
 		if ( (ret = state_changed(buf, state)) ) {
 			/* ensure proper handling in other states */
-			if(ret == 1) previous_state = STATE_ISOTP;
+			if(ret == CONTROL_SWITCH_STATE) previous_state = STATE_ISOTP;
 			strcpy(buf, "< ok >");
 			send(client_socket, buf, strlen(buf), 0);
 			return;
@@ -193,7 +193,7 @@ void state_isotp() {
 		}
 
 		if ( (ret = state_changed(buf, state)) ) {
-			if(ret == 1) close(si);
+			if(ret == CONTROL_SWITCH_STATE) close(si);
 			strcpy(buf, "< ok >");
 			send(client_socket, buf, strlen(buf), 0);
 			return;

@@ -140,7 +140,7 @@ void state_raw() {
 		if(ret == 0) {
 
 			if ( (ret = state_changed(buf, state)) ) {
-				if(ret == 1) close(raw_socket);
+				if(ret == CONTROL_SWITCH_STATE) close(raw_socket);
 				strcpy(buf, "< ok >");
 				send(client_socket, buf, strlen(buf), 0);
 				return;
