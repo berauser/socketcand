@@ -24,120 +24,21 @@
 int si = -1;
 fd_set readfds;
 
+void state_isotp_init();
+void state_isotp_deinit();
+
 void state_isotp() {
 	int i, items, ret;
-
-	struct sockaddr_can addr;
-	struct ifreq ifr;
-	static struct can_isotp_options opts;
-	static struct can_isotp_fc_options fcopts;
 
 	char rxmsg[MAXLEN]; /* can to inet */
 	char buf[MAXLEN]; /* inet commands to can */
 	unsigned char isobuf[ISOTPLEN+1]; /* binary buffer for isotp socket */
 	unsigned char tmp;
 	
-	while(previous_state != STATE_ISOTP) {
-
-		ret = receive_command(client_socket, buf);
-		if(ret != 0) {
-			change_state(STATE_SHUTDOWN);
-			return;
-		}
-
-		strncpy(ifr.ifr_name, bus_name, IFNAMSIZ);
-
-		if ( (ret = state_changed(buf, state)) ) {
-			/* ensure proper handling in other states */
-			if(ret == CONTROL_SWITCH_STATE) previous_state = STATE_ISOTP;
-			strcpy(buf, "< ok >");
-			send(client_socket, buf, strlen(buf), 0);
-			return;
-		}
-
-		if(!strcmp("< echo >", buf)) {
-			send(client_socket, buf, strlen(buf), 0);
-			continue;
-		}
-
-		memset(&opts, 0, sizeof(opts));
-		memset(&fcopts, 0, sizeof(fcopts));
-		memset(&addr, 0, sizeof(addr));
-
-		/* get configuration to open the socket */
-		if(!strncmp("< isotpconf ", buf, 12)) {
-			items = sscanf(buf, "< %*s %x %x %x "
-				       "%hhu %hhx %hhu "
-				       "%hhx %hhx %hhx %hhx >",
-				       &addr.can_addr.tp.tx_id,
-				       &addr.can_addr.tp.rx_id,
-				       &opts.flags,
-				       &fcopts.bs,
-				       &fcopts.stmin,
-				       &fcopts.wftmax,
-				       &opts.txpad_content,
-				       &opts.rxpad_content,
-				       &opts.ext_address,
-				       &opts.rx_ext_address);
-
-			/* < isotpconf XXXXXXXX ... > check for extended identifier */
-			if(element_length(buf, 2) == 8)
-				addr.can_addr.tp.tx_id |= CAN_EFF_FLAG;
-
-			if(element_length(buf, 3) == 8)
-				addr.can_addr.tp.rx_id |= CAN_EFF_FLAG;
-
-			if ((opts.flags & CAN_ISOTP_RX_EXT_ADDR && items < 10) ||
-			    (opts.flags & CAN_ISOTP_EXTEND_ADDR && items < 9) ||
-			    (opts.flags & CAN_ISOTP_RX_PADDING && items < 8) ||
-			    (opts.flags & CAN_ISOTP_TX_PADDING && items < 7) ||
-			    (items < 5)) {
-				PRINT_ERROR("Syntax error in isotpconf command\n");
-				/* try it once more */
-				continue;
-			}
-
-			/* open ISOTP socket */
-			if ((si = socket(PF_CAN, SOCK_DGRAM, CAN_ISOTP)) < 0) {
-				PRINT_ERROR("Error while opening ISOTP socket %s\n", strerror(errno));
-				/* ensure proper handling in other states */
-				previous_state = STATE_ISOTP;
-				change_state(STATE_SHUTDOWN);
-				return;
-			}
-
-			strcpy(ifr.ifr_name, bus_name);
-			if(ioctl(si, SIOCGIFINDEX, &ifr) < 0) {
-				PRINT_ERROR("Error while searching for bus %s\n", strerror(errno));
-				/* ensure proper handling in other states */
-				previous_state = STATE_ISOTP;
-				change_state(STATE_SHUTDOWN);
-				return;
-			}
-
-			addr.can_family = PF_CAN;
-			addr.can_ifindex = ifr.ifr_ifindex;
-
-			/* only change the built-in defaults when required */
-			if (opts.flags)
-				setsockopt(si, SOL_CAN_ISOTP, CAN_ISOTP_OPTS, &opts, sizeof(opts));
-
-			setsockopt(si, SOL_CAN_ISOTP, CAN_ISOTP_RECV_FC, &fcopts, sizeof(fcopts));
-
-			PRINT_VERBOSE("binding ISOTP socket...\n")
-			if (bind(si, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-				PRINT_ERROR("Error while binding ISOTP socket %s\n", strerror(errno));
-				/* ensure proper handling in other states */
-				previous_state = STATE_ISOTP;
-				change_state(STATE_SHUTDOWN);
-				return;
-			}
-#if 0
-			/* ok we made it and have a proper isotp socket open */
-			previous_state = STATE_ISOTP;
-#endif
-		}
-	} /* while */
+	if(previous_state == STATE_ISOTP) {
+		state_isotp_init();
+		previous_state = STATE_ISOTP;
+	}
 
 	FD_ZERO(&readfds);
 	FD_SET(si, &readfds);
@@ -193,7 +94,7 @@ void state_isotp() {
 		}
 
 		if ( (ret = state_changed(buf, state)) ) {
-			if(ret == CONTROL_SWITCH_STATE) close(si);
+			if(ret == CONTROL_SWITCH_STATE) state_isotp_deinit();
 			strcpy(buf, "< ok >");
 			send(client_socket, buf, strlen(buf), 0);
 			return;
@@ -241,4 +142,123 @@ void state_isotp() {
 			send(client_socket, buf, strlen(buf), 0);
 		}
 	}
+}
+
+void state_isotp_init() {
+
+	int items, ret;
+
+	struct sockaddr_can addr;
+	struct ifreq ifr;
+	static struct can_isotp_options opts;
+	static struct can_isotp_fc_options fcopts;
+
+	char buf[MAXLEN]; /* inet commands to can */
+
+	while(previous_state != STATE_ISOTP) {
+
+		ret = receive_command(client_socket, buf);
+		if(ret != 0) {
+			change_state(STATE_SHUTDOWN);
+			return;
+		}
+
+		strncpy(ifr.ifr_name, bus_name, IFNAMSIZ);
+
+		if ( (ret = state_changed(buf, state)) ) {
+			/* ensure proper handling in other states */
+			if(ret == CONTROL_SWITCH_STATE) previous_state = STATE_ISOTP;
+			strcpy(buf, "< ok >");
+			send(client_socket, buf, strlen(buf), 0);
+			return;
+		}
+
+		if(!strcmp("< echo >", buf)) {
+			send(client_socket, buf, strlen(buf), 0);
+			continue;
+		}
+
+		memset(&opts, 0, sizeof(opts));
+		memset(&fcopts, 0, sizeof(fcopts));
+		memset(&addr, 0, sizeof(addr));
+
+		/* get configuration to open the socket */
+		if(!strncmp("< isotpconf ", buf, 12)) {
+			items = sscanf(buf, "< %*s %x %x %x "
+				       "%hhu %hhx %hhu "
+				       "%hhx %hhx %hhx %hhx >",
+				       &addr.can_addr.tp.tx_id,
+				       &addr.can_addr.tp.rx_id,
+				       &opts.flags,
+				       &fcopts.bs,
+				       &fcopts.stmin,
+				       &fcopts.wftmax,
+				       &opts.txpad_content,
+				       &opts.rxpad_content,
+				       &opts.ext_address,
+				       &opts.rx_ext_address);
+
+			/* < isotpconf XXXXXXXX ... > check for extended identifier */
+			if(element_length(buf, 2) == 8)
+				addr.can_addr.tp.tx_id |= CAN_EFF_FLAG;
+
+			if(element_length(buf, 3) == 8)
+				addr.can_addr.tp.rx_id |= CAN_EFF_FLAG;
+
+			if (((opts.flags & CAN_ISOTP_RX_EXT_ADDR) && items < 10) ||
+			    ((opts.flags & CAN_ISOTP_EXTEND_ADDR) && items < 9) ||
+			    ((opts.flags & CAN_ISOTP_RX_PADDING) && items < 8) ||
+			    ((opts.flags & CAN_ISOTP_TX_PADDING) && items < 7) ||
+			    (items < 5)) {
+				PRINT_ERROR("Syntax error in isotpconf command\n");
+				/* try it once more */
+				continue;
+			}
+
+			/* open ISOTP socket */
+			if ((si = socket(PF_CAN, SOCK_DGRAM, CAN_ISOTP)) < 0) {
+				PRINT_ERROR("Error while opening ISOTP socket %s\n", strerror(errno));
+				/* ensure proper handling in other states */
+				previous_state = STATE_ISOTP;
+				state_isotp_deinit();
+				change_state(STATE_SHUTDOWN);
+				return;
+			}
+
+			strcpy(ifr.ifr_name, bus_name);
+			if(ioctl(si, SIOCGIFINDEX, &ifr) < 0) {
+				PRINT_ERROR("Error while searching for bus %s\n", strerror(errno));
+				/* ensure proper handling in other states */
+				previous_state = STATE_ISOTP;
+				state_isotp_deinit();
+				change_state(STATE_SHUTDOWN);
+				return;
+			}
+
+			addr.can_family = PF_CAN;
+			addr.can_ifindex = ifr.ifr_ifindex;
+
+			/* only change the built-in defaults when required */
+			if (opts.flags)
+				setsockopt(si, SOL_CAN_ISOTP, CAN_ISOTP_OPTS, &opts, sizeof(opts));
+
+			setsockopt(si, SOL_CAN_ISOTP, CAN_ISOTP_RECV_FC, &fcopts, sizeof(fcopts));
+
+			PRINT_VERBOSE("binding ISOTP socket...\n")
+			if (bind(si, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+				PRINT_ERROR("Error while binding ISOTP socket %s\n", strerror(errno));
+				/* ensure proper handling in other states */
+				previous_state = STATE_ISOTP;
+				state_isotp_deinit();
+				change_state(STATE_SHUTDOWN);
+				return;
+			}
+			/* ok we made it and have a proper isotp socket open */
+			previous_state = STATE_ISOTP;
+		}
+	} /* while */
+}
+
+void state_isotp_deinit() {
+	close(si);
 }

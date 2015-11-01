@@ -17,14 +17,15 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+void state_control_init();
+void state_control_deinit();
+
 void state_control() {
 	char buf[MAXLEN];
 	int i, ret, items;
 
 	if(previous_state != STATE_CONTROL) {
-		PRINT_VERBOSE("starting statistics thread...\n")
-			pthread_create(&statistics_thread, NULL, &statistics_loop, NULL);
-
+		state_control_init();
 		previous_state = STATE_CONTROL;
 	}
 
@@ -32,12 +33,13 @@ void state_control() {
 
 	if(i != 0) {
 		PRINT_ERROR("Connection terminated while waiting for command.\n");
+		state_control_deinit();
 		change_state(STATE_SHUTDOWN);
 		return;
 	}
 
 	if ( (ret = state_changed(buf, state)) ) {
-		if(ret == CONTROL_SWITCH_STATE) pthread_cancel(statistics_thread);
+		if(ret == CONTROL_SWITCH_STATE) state_control_deinit();
 		strcpy(buf, "< ok >");
 		send(client_socket, buf, strlen(buf), 0);
 		return;
@@ -59,7 +61,16 @@ void state_control() {
 		}
 	} else {
 		PRINT_ERROR("unknown command '%s'.\n", buf)
-			strcpy(buf, "< error unknown command >");
+		strcpy(buf, "< error unknown command >");
 		send(client_socket, buf, strlen(buf), 0);
 	}
+}
+
+void state_control_init() {
+	PRINT_VERBOSE("starting statistics thread...\n")
+	pthread_create(&statistics_thread, NULL, &statistics_loop, NULL);
+}
+
+void state_control_deinit() {
+	pthread_cancel(statistics_thread);
 }

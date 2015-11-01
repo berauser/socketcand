@@ -20,6 +20,9 @@
 
 #include <linux/can.h>
 
+void state_raw_init();
+void state_raw_deinit();
+
 int raw_socket;
 struct ifreq ifr;
 struct sockaddr_can addr;
@@ -36,42 +39,7 @@ void state_raw() {
 	int i, ret, items;
 
 	if(previous_state != STATE_RAW) {
-
-		if((raw_socket = socket(PF_CAN, SOCK_RAW, CAN_RAW)) < 0) {
-			PRINT_ERROR("Error while creating RAW socket %s\n", strerror(errno));
-			change_state(STATE_SHUTDOWN);
-			return;
-		}
-
-		strcpy(ifr.ifr_name, bus_name);
-		if(ioctl(raw_socket, SIOCGIFINDEX, &ifr) < 0) {
-			PRINT_ERROR("Error while searching for bus %s\n", strerror(errno));
-			change_state(STATE_SHUTDOWN);
-			return;
-		}
-
-		addr.can_family = AF_CAN;
-		addr.can_ifindex = ifr.ifr_ifindex;
-
-		const int timestamp_on = 1;
-		if(setsockopt( raw_socket, SOL_SOCKET, SO_TIMESTAMP, &timestamp_on, sizeof(timestamp_on)) < 0) {
-			PRINT_ERROR("Could not enable CAN timestamps\n");
-			change_state(STATE_SHUTDOWN);
-			return;
-		}
-
-		if(bind(raw_socket, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
-			PRINT_ERROR("Error while binding RAW socket %s\n", strerror(errno));
-			change_state(STATE_SHUTDOWN);
-			return;
-		}
-
-		iov.iov_base = &frame;
-		msg.msg_name = &addr;
-		msg.msg_iov = &iov;
-		msg.msg_iovlen = 1;
-		msg.msg_control = &ctrlmsg;
-
+		state_raw_init();
 		previous_state = STATE_RAW;
 	}
 
@@ -90,6 +58,7 @@ void state_raw() {
 
 		if(ret < 0) {
 			PRINT_ERROR("Error in select()\n")
+			state_raw_deinit();
 			change_state(STATE_SHUTDOWN);
 			return;
 		}
@@ -140,7 +109,7 @@ void state_raw() {
 		if(ret == 0) {
 
 			if ( (ret = state_changed(buf, state)) ) {
-				if(ret == CONTROL_SWITCH_STATE) close(raw_socket);
+				if(ret == CONTROL_SWITCH_STATE) state_raw_deinit();
 				strcpy(buf, "< ok >");
 				send(client_socket, buf, strlen(buf), 0);
 				return;
@@ -176,6 +145,7 @@ void state_raw() {
 
 				ret = send(raw_socket, &frame, sizeof(struct can_frame), 0);
 				if(ret==-1) {
+					state_raw_deinit();
 					change_state(STATE_SHUTDOWN);
 					return;
 				}
@@ -186,14 +156,62 @@ void state_raw() {
 				send(client_socket, buf, strlen(buf), 0);
 			}
 		} else {
+			state_raw_deinit();
 			change_state(STATE_SHUTDOWN);
 			return;
 		}
 	} else {
 		ret = read(client_socket, &buf, 0);
 		if(ret==-1) {
+			state_raw_deinit();
 			change_state(STATE_SHUTDOWN);
 			return;
 		}
 	}
+}
+
+void state_raw_init() {
+
+	if((raw_socket = socket(PF_CAN, SOCK_RAW, CAN_RAW)) < 0) {
+		PRINT_ERROR("Error while creating RAW socket %s\n", strerror(errno));
+		change_state(STATE_SHUTDOWN);
+		return;
+	}
+
+	strcpy(ifr.ifr_name, bus_name);
+	if(ioctl(raw_socket, SIOCGIFINDEX, &ifr) < 0) {
+		PRINT_ERROR("Error while searching for bus %s\n", strerror(errno));
+		state_raw_deinit();
+		change_state(STATE_SHUTDOWN);
+		return;
+	}
+
+	addr.can_family = AF_CAN;
+	addr.can_ifindex = ifr.ifr_ifindex;
+
+	const int timestamp_on = 1;
+	if(setsockopt( raw_socket, SOL_SOCKET, SO_TIMESTAMP, &timestamp_on, sizeof(timestamp_on)) < 0) {
+		PRINT_ERROR("Could not enable CAN timestamps\n");
+		state_raw_deinit();
+		change_state(STATE_SHUTDOWN);
+		return;
+	}
+
+	if(bind(raw_socket, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
+		PRINT_ERROR("Error while binding RAW socket %s\n", strerror(errno));
+		state_raw_deinit();
+		change_state(STATE_SHUTDOWN);
+		return;
+	}
+
+	iov.iov_base = &frame;
+	msg.msg_name = &addr;
+	msg.msg_iov = &iov;
+	msg.msg_iovlen = 1;
+	msg.msg_control = &ctrlmsg;
+
+}
+
+void state_raw_deinit() {
+	close(raw_socket);
 }

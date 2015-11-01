@@ -27,11 +27,14 @@
 int sc = -1;
 fd_set readfds;
 struct timeval tv;
+struct sockaddr_can caddr;
+socklen_t caddrlen = sizeof(caddr);
+
+void state_bcm_init();
+void state_bcm_deinit();
 
 void state_bcm() {
 	int i, ret;
-	struct sockaddr_can caddr;
-	socklen_t caddrlen = sizeof(caddr);
 	struct ifreq ifr;
 	char rxmsg[RXLEN];
 	char buf[MAXLEN];
@@ -42,23 +45,7 @@ void state_bcm() {
 	} msg;
 
 	if(previous_state != STATE_BCM) {
-		/* open BCM socket */
-		if ((sc = socket(PF_CAN, SOCK_DGRAM, CAN_BCM)) < 0) {
-			PRINT_ERROR("Error while opening BCM socket %s\n", strerror(errno));
-			change_state(STATE_SHUTDOWN);
-			return;
-		}
-
-		memset(&caddr, 0, sizeof(caddr));
-		caddr.can_family = PF_CAN;
-		/* can_ifindex is set to 0 (any device) => need for sendto() */
-
-		PRINT_VERBOSE("connecting BCM socket...\n")
-			if (connect(sc, (struct sockaddr *)&caddr, sizeof(caddr)) < 0) {
-				PRINT_ERROR("Error while connecting BCM socket %s\n", strerror(errno));
-				change_state(STATE_SHUTDOWN);
-				return;
-			}
+		state_bcm_init();
 		previous_state = STATE_BCM;
 	}
 
@@ -77,6 +64,7 @@ void state_bcm() {
 
 		if(ret < 0) {
 			PRINT_ERROR("Error in select()\n")
+			state_bcm_deinit();
 			change_state(STATE_SHUTDOWN);
 			return;
 		}
@@ -130,6 +118,7 @@ void state_bcm() {
 		ret = receive_command(client_socket, buf);
 
 		if(ret != 0) {
+			state_bcm_deinit();
 			change_state(STATE_SHUTDOWN);
 			return;
 		}
@@ -141,7 +130,7 @@ void state_bcm() {
 		strncpy(ifr.ifr_name, bus_name, IFNAMSIZ);
 
 		if ( (ret = state_changed(buf, state)) ) {
-			if(ret == CONTROL_SWITCH_STATE) close(sc);
+			if(ret == CONTROL_SWITCH_STATE) state_bcm_deinit();
 			strcpy(buf, "< ok >");
 			send(client_socket, buf, strlen(buf), 0);
 			return;
@@ -370,4 +359,29 @@ void state_bcm() {
 			send(client_socket, buf, strlen(buf), 0);
 		}
 	}
+}
+
+void state_bcm_init() {
+	/* open BCM socket */
+	if ((sc = socket(PF_CAN, SOCK_DGRAM, CAN_BCM)) < 0) {
+		PRINT_ERROR("Error while opening BCM socket %s\n", strerror(errno));
+		change_state(STATE_SHUTDOWN);
+		return;
+	}
+
+	memset(&caddr, 0, sizeof(caddr));
+	caddr.can_family = PF_CAN;
+	/* can_ifindex is set to 0 (any device) => need for sendto() */
+
+	PRINT_VERBOSE("connecting BCM socket...\n")
+		if (connect(sc, (struct sockaddr *)&caddr, sizeof(caddr)) < 0) {
+			PRINT_ERROR("Error while connecting BCM socket %s\n", strerror(errno));
+			state_bcm_deinit();
+			change_state(STATE_SHUTDOWN);
+			return;
+		}
+}
+
+void state_bcm_deinit() {
+	close(sc);
 }

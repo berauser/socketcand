@@ -20,11 +20,15 @@
 
 fd_set readfds;
 
+void state_default_init();
+void state_default_deinit();
+
 void state_default() {
 	char buf[MAXLEN];
 	int ret;
 
 	if(previous_state != STATE_DEFAULT) {
+		state_default_init();
 		previous_state = STATE_DEFAULT;
 	}
 
@@ -35,6 +39,7 @@ void state_default() {
 
 	if(ret < 0) {
 		PRINT_ERROR("Error in select()\n")
+		state_default_deinit();
 		change_state(STATE_SHUTDOWN);
 		return;
 	}
@@ -43,7 +48,6 @@ void state_default() {
 		ret = receive_command(client_socket, (char *) &buf);
 
 		if(ret == 0) {
-
 
 			if (state_changed(buf, state)) {
 				strcpy(buf, "< ok >");
@@ -55,14 +59,24 @@ void state_default() {
 				send(client_socket, buf, strlen(buf), 0);
 			}
 		} else {
+			state_default_deinit();
 			change_state(STATE_SHUTDOWN);
 			return;
 		}
 	} else {
 		ret = read(client_socket, &buf, 0);
 		if(ret==-1) {
+			state_default_deinit();
 			change_state(STATE_SHUTDOWN);
 			return;
 		}
 	}
+}
+
+void state_default_init() {
+
+}
+
+void state_default_deinit() {
+
 }
