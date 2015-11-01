@@ -318,15 +318,6 @@ inline void state_connected()
 						sscanf(buf, "< frame %x %*d.%*d %s >", &frame.can_id,
 						       data_str);
 
-						char* s = buf + 7;
-						for(; ++s;) {
-							if(*s== ' ') {
-								break;
-							}
-						}
-						if((s - buf - 7) > 4)
-							frame.can_id |= CAN_EFF_FLAG;
-
 						frame.can_dlc = strlen(data_str) / 2;
 
 						sscanf(data_str, "%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx",
@@ -376,7 +367,7 @@ inline void state_connected()
 					} else {
 						if(frame.can_id & CAN_EFF_FLAG) {
 							ret = sprintf(buf, "< send %08X %d ",
-								      frame.can_id & CAN_EFF_MASK, frame.can_dlc);
+								      (frame.can_id & CAN_EFF_MASK) | CAN_EFF_FLAG, frame.can_dlc);
 						} else {
 							ret = sprintf(buf, "< send %03X %d ",
 								      frame.can_id & CAN_SFF_MASK, frame.can_dlc);

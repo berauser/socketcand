@@ -97,7 +97,7 @@ void state_bcm() {
 			if(msg.frame.can_dlc != CAN_ERR_DLC) {
 				PRINT_ERROR("Error frame has a wrong DLC!\n")
 					} else {
-				snprintf(rxmsg, RXLEN, "< error %03X %ld.%06ld ", msg.msg_head.can_id, tv.tv_sec, tv.tv_usec);
+				snprintf(rxmsg, RXLEN, "< error %08X %ld.%06ld ", (msg.msg_head.can_id & CAN_ERR_MASK) | CAN_ERR_FLAG, tv.tv_sec, tv.tv_usec);
 
 				for ( i = 0; i < msg.frame.can_dlc; i++)
 					snprintf(rxmsg + strlen(rxmsg), RXLEN - strlen(rxmsg), "%02X ",
@@ -109,7 +109,7 @@ void state_bcm() {
 		} else {
 			if(msg.msg_head.can_id & CAN_EFF_FLAG) {
 				snprintf(rxmsg, RXLEN, "< frame %08X %ld.%06ld ",
-					 msg.msg_head.can_id & CAN_EFF_MASK, tv.tv_sec, tv.tv_usec);
+					 (msg.msg_head.can_id & CAN_EFF_MASK) | CAN_EFF_FLAG, tv.tv_sec, tv.tv_usec);
 			} else {
 				snprintf(rxmsg, RXLEN, "< frame %03X %ld.%06ld ",
 					 msg.msg_head.can_id & CAN_SFF_MASK, tv.tv_sec, tv.tv_usec);
@@ -174,10 +174,6 @@ void state_bcm() {
 				PRINT_ERROR("Syntax error in send command\n")
 					return;
 			}
-
-			/* < send XXXXXXXX ... > check for extended identifier */
-			if(element_length(buf, 2) == 8)
-				msg.msg_head.can_id |= CAN_EFF_FLAG;
 
 			msg.msg_head.opcode = TX_SEND;
 			msg.frame.can_id = msg.msg_head.can_id;
