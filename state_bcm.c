@@ -45,7 +45,7 @@ void state_bcm() {
 		/* open BCM socket */
 		if ((sc = socket(PF_CAN, SOCK_DGRAM, CAN_BCM)) < 0) {
 			PRINT_ERROR("Error while opening BCM socket %s\n", strerror(errno));
-			state = STATE_SHUTDOWN;
+			change_state(STATE_SHUTDOWN);
 			return;
 		}
 
@@ -56,7 +56,7 @@ void state_bcm() {
 		PRINT_VERBOSE("connecting BCM socket...\n")
 			if (connect(sc, (struct sockaddr *)&caddr, sizeof(caddr)) < 0) {
 				PRINT_ERROR("Error while connecting BCM socket %s\n", strerror(errno));
-				state = STATE_SHUTDOWN;
+				change_state(STATE_SHUTDOWN);
 				return;
 			}
 		previous_state = STATE_BCM;
@@ -77,7 +77,7 @@ void state_bcm() {
 
 		if(ret < 0) {
 			PRINT_ERROR("Error in select()\n")
-				state = STATE_SHUTDOWN;
+			change_state(STATE_SHUTDOWN);
 			return;
 		}
 	}
@@ -130,7 +130,7 @@ void state_bcm() {
 		ret = receive_command(client_socket, buf);
 
 		if(ret != 0) {
-			state = STATE_SHUTDOWN;
+			change_state(STATE_SHUTDOWN);
 			return;
 		}
 
@@ -140,8 +140,8 @@ void state_bcm() {
 
 		strncpy(ifr.ifr_name, bus_name, IFNAMSIZ);
 
-		if (state_changed(buf, state)) {
-			close(sc);
+		if ( (ret = state_changed(buf, state)) ) {
+			if(ret == 1) close(sc);
 			strcpy(buf, "< ok >");
 			send(client_socket, buf, strlen(buf), 0);
 			return;

@@ -39,14 +39,14 @@ void state_raw() {
 
 		if((raw_socket = socket(PF_CAN, SOCK_RAW, CAN_RAW)) < 0) {
 			PRINT_ERROR("Error while creating RAW socket %s\n", strerror(errno));
-			state = STATE_SHUTDOWN;
+			change_state(STATE_SHUTDOWN);
 			return;
 		}
 
 		strcpy(ifr.ifr_name, bus_name);
 		if(ioctl(raw_socket, SIOCGIFINDEX, &ifr) < 0) {
 			PRINT_ERROR("Error while searching for bus %s\n", strerror(errno));
-			state = STATE_SHUTDOWN;
+			change_state(STATE_SHUTDOWN);
 			return;
 		}
 
@@ -56,13 +56,13 @@ void state_raw() {
 		const int timestamp_on = 1;
 		if(setsockopt( raw_socket, SOL_SOCKET, SO_TIMESTAMP, &timestamp_on, sizeof(timestamp_on)) < 0) {
 			PRINT_ERROR("Could not enable CAN timestamps\n");
-			state = STATE_SHUTDOWN;
+			change_state(STATE_SHUTDOWN);
 			return;
 		}
 
 		if(bind(raw_socket, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
 			PRINT_ERROR("Error while binding RAW socket %s\n", strerror(errno));
-			state = STATE_SHUTDOWN;
+			change_state(STATE_SHUTDOWN);
 			return;
 		}
 
@@ -90,7 +90,7 @@ void state_raw() {
 
 		if(ret < 0) {
 			PRINT_ERROR("Error in select()\n")
-				state = STATE_SHUTDOWN;
+			change_state(STATE_SHUTDOWN);
 			return;
 		}
 	}
@@ -139,8 +139,8 @@ void state_raw() {
 
 		if(ret == 0) {
 
-			if (state_changed(buf, state)) {
-				close(raw_socket);
+			if ( (ret = state_changed(buf, state)) ) {
+				if(ret == 1) close(raw_socket);
 				strcpy(buf, "< ok >");
 				send(client_socket, buf, strlen(buf), 0);
 				return;
@@ -176,7 +176,7 @@ void state_raw() {
 
 				ret = send(raw_socket, &frame, sizeof(struct can_frame), 0);
 				if(ret==-1) {
-					state = STATE_SHUTDOWN;
+					change_state(STATE_SHUTDOWN);
 					return;
 				}
 
@@ -186,13 +186,13 @@ void state_raw() {
 				send(client_socket, buf, strlen(buf), 0);
 			}
 		} else {
-			state = STATE_SHUTDOWN;
+			change_state(STATE_SHUTDOWN);
 			return;
 		}
 	} else {
 		ret = read(client_socket, &buf, 0);
 		if(ret==-1) {
-			state = STATE_SHUTDOWN;
+			change_state(STATE_SHUTDOWN);
 			return;
 		}
 	}

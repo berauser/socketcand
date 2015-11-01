@@ -50,6 +50,7 @@ extern struct sockaddr_in broadcast_addr;
 extern struct sockaddr_in saddr;
 
 int receive_command(int socket, char *buf);
+int change_state(int new_state);
 int state_changed(char *buf, int current_state);
 int element_length(char *buf, int element);
 int asc2nibble(char c);

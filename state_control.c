@@ -19,7 +19,7 @@
 
 void state_control() {
 	char buf[MAXLEN];
-	int i, items;
+	int i, ret, items;
 
 	if(previous_state != STATE_CONTROL) {
 		PRINT_VERBOSE("starting statistics thread...\n")
@@ -32,12 +32,12 @@ void state_control() {
 
 	if(i != 0) {
 		PRINT_ERROR("Connection terminated while waiting for command.\n");
-		state = STATE_SHUTDOWN;
+		change_state(STATE_SHUTDOWN);
 		return;
 	}
 
-	if (state_changed(buf, state)) {
-		pthread_cancel(statistics_thread);
+	if ( (ret = state_changed(buf, state)) ) {
+		if(ret == 1) pthread_cancel(statistics_thread);
 		strcpy(buf, "< ok >");
 		send(client_socket, buf, strlen(buf), 0);
 		return;

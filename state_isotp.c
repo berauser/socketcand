@@ -41,15 +41,15 @@ void state_isotp() {
 
 		ret = receive_command(client_socket, buf);
 		if(ret != 0) {
-			state = STATE_SHUTDOWN;
+			change_state(STATE_SHUTDOWN);
 			return;
 		}
 
 		strncpy(ifr.ifr_name, bus_name, IFNAMSIZ);
 
-		if (state_changed(buf, state)) {
+		if ( (ret = state_changed(buf, state)) ) {
 			/* ensure proper handling in other states */
-			previous_state = STATE_ISOTP;
+			if(ret == 1) previous_state = STATE_ISOTP;
 			strcpy(buf, "< ok >");
 			send(client_socket, buf, strlen(buf), 0);
 			return;
@@ -102,7 +102,7 @@ void state_isotp() {
 				PRINT_ERROR("Error while opening ISOTP socket %s\n", strerror(errno));
 				/* ensure proper handling in other states */
 				previous_state = STATE_ISOTP;
-				state = STATE_SHUTDOWN;
+				change_state(STATE_SHUTDOWN);
 				return;
 			}
 
@@ -111,7 +111,7 @@ void state_isotp() {
 				PRINT_ERROR("Error while searching for bus %s\n", strerror(errno));
 				/* ensure proper handling in other states */
 				previous_state = STATE_ISOTP;
-				state = STATE_SHUTDOWN;
+				change_state(STATE_SHUTDOWN);
 				return;
 			}
 
@@ -129,12 +129,13 @@ void state_isotp() {
 				PRINT_ERROR("Error while binding ISOTP socket %s\n", strerror(errno));
 				/* ensure proper handling in other states */
 				previous_state = STATE_ISOTP;
-				state = STATE_SHUTDOWN;
+				change_state(STATE_SHUTDOWN);
 				return;
 			}
-			
+#if 0
 			/* ok we made it and have a proper isotp socket open */
 			previous_state = STATE_ISOTP;
+#endif
 		}
 	} /* while */
 
@@ -152,7 +153,7 @@ void state_isotp() {
 		ret = select((si > client_socket)?si+1:client_socket+1, &readfds, NULL, NULL, NULL);
 		if(ret < 0) {
 			PRINT_ERROR("Error in select()\n")
-				state = STATE_SHUTDOWN;
+			change_state(STATE_SHUTDOWN);
 			return;
 		}
 	}
@@ -187,12 +188,12 @@ void state_isotp() {
 
 		ret = receive_command(client_socket, buf);
 		if(ret != 0) {
-			state = STATE_SHUTDOWN;
+			change_state(STATE_SHUTDOWN);
 			return;
 		}
 
-		if (state_changed(buf, state)) {
-			close(si);
+		if ( (ret = state_changed(buf, state)) ) {
+			if(ret == 1) close(si);
 			strcpy(buf, "< ok >");
 			send(client_socket, buf, strlen(buf), 0);
 			return;
@@ -231,7 +232,7 @@ void state_isotp() {
 			ret = write(si, isobuf, items);
 			if(ret != items) {
 				PRINT_ERROR("Error in write()\n")
-					state = STATE_SHUTDOWN;
+				change_state(STATE_SHUTDOWN);
 				return;
 			}
 		} else {

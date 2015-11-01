@@ -97,21 +97,33 @@ struct sockaddr_in saddr, broadcast_addr;
 char* interface_string;
 struct ifreq ifr, ifr_brd;
 
+
+int change_state(int new_state)
+{
+	if(state == new_state) return 2;
+
+	previous_state = state;
+	state = new_state;
+
+	return 1;
+}
+
 int state_changed(char *buf, int current_state)
 {
+	int ret = 0;
 	if(!strcmp("< rawmode >", buf))
-		state = STATE_RAW;
+		ret = change_state(STATE_RAW);
 	else if(!strcmp("< bcmmode >", buf))
-		state = STATE_BCM;
+		ret = change_state(STATE_BCM);
 	else if(!strcmp("< isotpmode >", buf))
-		state = STATE_ISOTP;
+		ret = change_state(STATE_ISOTP);
 	else if(!strcmp("< controlmode >", buf))
-		state = STATE_CONTROL;
+		ret = change_state(STATE_CONTROL);
 
-	if (current_state != state)
+	if (ret > 0)
 		PRINT_INFO("state changed to %d\n", state);
 
-	return (current_state != state);
+	return (ret);
 }
 
 int element_length(char *buf, int element)
@@ -389,7 +401,7 @@ int main(int argc, char **argv)
 			i = receive_command(client_socket, (char *) &buf);
 			if(i != 0) {
 				PRINT_ERROR("Connection terminated while waiting for command.\n");
-				state = STATE_SHUTDOWN;
+				change_state(STATE_SHUTDOWN);
 				break;
 			}
 
@@ -406,13 +418,13 @@ int main(int argc, char **argv)
 				if(found) {
 					strcpy(buf, "< ok >");
 					send(client_socket, buf, strlen(buf), 0);
-					state = STATE_DEFAULT;
+					change_state(STATE_DEFAULT);
 					break;
 				} else {
 					PRINT_INFO("client tried to access unauthorized bus.\n");
 					strcpy(buf, "< error could not open bus >");
 					send(client_socket, buf, strlen(buf), 0);
-					state = STATE_SHUTDOWN;
+					change_state(STATE_SHUTDOWN);
 				}
 			} else {
 				PRINT_ERROR("unknown command '%s'.\n", buf)
