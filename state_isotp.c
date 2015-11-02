@@ -1,6 +1,8 @@
 #include "config.h"
 #include "socketcand.h"
 
+#include "helper_command.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -100,6 +102,7 @@ void state_isotp() {
 			return;
 		}
 
+#if 0
 		if(!strcmp("< echo >", buf)) {
 			send(client_socket, buf, strlen(buf), 0);
 			return;
@@ -141,6 +144,57 @@ void state_isotp() {
 				strcpy(buf, "< error unknown command >");
 			send(client_socket, buf, strlen(buf), 0);
 		}
+#else
+		ret = decode_command(buf);
+		switch(ret) {
+
+		case COMMAND_ECHO:
+			send(client_socket, buf, strlen(buf), 0);
+			break;
+
+		case COMMAND_SENDPDU:
+			items = element_length(buf, 2);
+			if (items & 1) {
+				PRINT_ERROR("odd number of ASCII Hex values\n");
+				return;
+			}
+
+			items /= 2;
+			if (items > ISOTPLEN) {
+				PRINT_ERROR("PDU too long\n");
+				return;
+			}
+
+			for (i = 0; i < items; i++) {
+
+				tmp = asc2nibble(buf[(2*i) + 10]);
+				if (tmp > 0x0F)
+					return;
+				isobuf[i] = (tmp << 4);
+				tmp = asc2nibble(buf[(2*i) + 11]);
+				if (tmp > 0x0F)
+					return;
+				isobuf[i] |= tmp;
+			}
+
+			ret = write(si, isobuf, items);
+			if(ret != items) {
+				PRINT_ERROR("Error in write()\n")
+				change_state(STATE_SHUTDOWN);
+				return;
+			}
+			break; /* COMMAND_SENDPDU */
+
+		case COMMAND_UNKNOWN:
+		default:
+			PRINT_ERROR("unknown command '%s'.\n", buf)
+			strcpy(buf, "< error unknown command >");
+			send(client_socket, buf, strlen(buf), 0);
+			break;	/* COMMAND_UNKNOWN */
+		}
+
+
+#endif
 	}
 }
 
@@ -172,7 +226,7 @@ void state_isotp_init() {
 			send(client_socket, buf, strlen(buf), 0);
 			return;
 		}
-
+#if 0
 		if(!strcmp("< echo >", buf)) {
 			send(client_socket, buf, strlen(buf), 0);
 			continue;
@@ -256,6 +310,102 @@ void state_isotp_init() {
 			/* ok we made it and have a proper isotp socket open */
 			previous_state = STATE_ISOTP;
 		}
+#else
+
+		ret = decode_command(buf);
+		switch(ret) {
+
+		case COMMAND_ECHO:
+			send(client_socket, buf, strlen(buf), 0);
+			continue;
+			break;
+
+		case COMMAND_ISOTPCONF:
+			memset(&opts, 0, sizeof(opts));
+			memset(&fcopts, 0, sizeof(fcopts));
+			memset(&addr, 0, sizeof(addr));
+
+			/* get configuration to open the socket */
+			items = sscanf(buf, "< %*s %x %x %x "
+				       "%hhu %hhx %hhu "
+				       "%hhx %hhx %hhx %hhx >",
+				       &addr.can_addr.tp.tx_id,
+				       &addr.can_addr.tp.rx_id,
+				       &opts.flags,
+				       &fcopts.bs,
+				       &fcopts.stmin,
+				       &fcopts.wftmax,
+				       &opts.txpad_content,
+				       &opts.rxpad_content,
+				       &opts.ext_address,
+				       &opts.rx_ext_address);
+
+			/* < isotpconf XXXXXXXX ... > check for extended identifier */
+			if(element_length(buf, 2) == 8)
+				addr.can_addr.tp.tx_id |= CAN_EFF_FLAG;
+
+			if(element_length(buf, 3) == 8)
+				addr.can_addr.tp.rx_id |= CAN_EFF_FLAG;
+
+			if (((opts.flags & CAN_ISOTP_RX_EXT_ADDR) && items < 10) ||
+			    ((opts.flags & CAN_ISOTP_EXTEND_ADDR) && items < 9) ||
+			    ((opts.flags & CAN_ISOTP_RX_PADDING) && items < 8) ||
+			    ((opts.flags & CAN_ISOTP_TX_PADDING) && items < 7) ||
+			    (items < 5)) {
+				PRINT_ERROR("Syntax error in isotpconf command\n");
+				/* try it once more */
+				continue;
+			}
+
+			/* open ISOTP socket */
+			if ((si = socket(PF_CAN, SOCK_DGRAM, CAN_ISOTP)) < 0) {
+				PRINT_ERROR("Error while opening ISOTP socket %s\n", strerror(errno));
+				/* ensure proper handling in other states */
+				previous_state = STATE_ISOTP;
+				state_isotp_deinit();
+				change_state(STATE_SHUTDOWN);
+				return;
+			}
+
+			strcpy(ifr.ifr_name, bus_name);
+			if(ioctl(si, SIOCGIFINDEX, &ifr) < 0) {
+				PRINT_ERROR("Error while searching for bus %s\n", strerror(errno));
+				/* ensure proper handling in other states */
+				previous_state = STATE_ISOTP;
+				state_isotp_deinit();
+				change_state(STATE_SHUTDOWN);
+				return;
+			}
+
+			addr.can_family = PF_CAN;
+			addr.can_ifindex = ifr.ifr_ifindex;
+
+			/* only change the built-in defaults when required */
+			if (opts.flags)
+				setsockopt(si, SOL_CAN_ISOTP, CAN_ISOTP_OPTS, &opts, sizeof(opts));
+
+			setsockopt(si, SOL_CAN_ISOTP, CAN_ISOTP_RECV_FC, &fcopts, sizeof(fcopts));
+
+			PRINT_VERBOSE("binding ISOTP socket...\n")
+			if (bind(si, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+				PRINT_ERROR("Error while binding ISOTP socket %s\n", strerror(errno));
+				/* ensure proper handling in other states */
+				previous_state = STATE_ISOTP;
+				state_isotp_deinit();
+				change_state(STATE_SHUTDOWN);
+				return;
+			}
+			/* ok we made it and have a proper isotp socket open */
+			previous_state = STATE_ISOTP;
+			break;
+
+		case COMMAND_UNKNOWN:
+		default:
+
+			break;
+
+		} /* switch */
+#endif
 	} /* while */
 }
 

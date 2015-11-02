@@ -2,6 +2,8 @@
 #include "socketcand.h"
 #include "statistics.h"
 
+#include "helper_command.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -114,7 +116,7 @@ void state_raw() {
 				send(client_socket, buf, strlen(buf), 0);
 				return;
 			}
-
+#if 0
 			if(!strcmp("< echo >", buf)) {
 				send(client_socket, buf, strlen(buf), 0);
 				return;
@@ -155,6 +157,57 @@ void state_raw() {
 				strcpy(buf, "< error unknown command >");
 				send(client_socket, buf, strlen(buf), 0);
 			}
+#else
+			ret = decode_command(buf);
+			switch (ret) {
+				case COMMAND_ECHO:
+					send(client_socket, buf, strlen(buf), 0);
+					return;
+					break;
+
+				case COMMAND_SEND:
+				{
+					items = sscanf(buf, "< %*s %x %hhu "
+					       "%hhx %hhx %hhx %hhx %hhx %hhx "
+					       "%hhx %hhx >",
+					       &frame.can_id,
+					       &frame.can_dlc,
+					       &frame.data[0],
+					       &frame.data[1],
+					       &frame.data[2],
+					       &frame.data[3],
+					       &frame.data[4],
+					       &frame.data[5],
+					       &frame.data[6],
+					       &frame.data[7]);
+
+					if ( (items < 2) ||
+					     (frame.can_dlc > 8) ||
+					     (items != 2 + frame.can_dlc)) {
+						PRINT_ERROR("Syntax error in send command\n")
+						return;
+					}
+
+					ret = send(raw_socket, &frame, sizeof(struct can_frame), 0);
+					if(ret==-1) {
+						state_raw_deinit();
+						change_state(STATE_SHUTDOWN);
+						return;
+					}
+
+				}
+				break;
+
+				case COMMAND_UNKNOWN:
+				default:
+					PRINT_ERROR("unknown command '%s'\n", buf);
+					strcpy(buf, "< error unknown command >");
+					send(client_socket, buf, strlen(buf), 0);
+					break;
+			}
+
+#endif
+
 		} else {
 			state_raw_deinit();
 			change_state(STATE_SHUTDOWN);
